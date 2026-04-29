@@ -12,23 +12,30 @@ O sistema é composto por 10 microserviços independentes, orquestrados via **Do
 
 ## 🛠️ Como Iniciar o Ambiente
 
-### Pré-requisitos
-- Docker & Docker Compose
-- Terminal com suporte a PowerShell (para scripts de automação)
+O projeto foi desenhado para ser totalmente portátil e fácil de subir. Você tem duas opções principais:
 
-### Subindo tudo de uma vez
-Para compilar e subir todos os serviços, infraestrutura e rede, execute:
+### ⚡ Quick Start (Subir e Testar)
+Se você quer subir tudo e já validar o funcionamento com um único comando:
+
+```powershell
+docker-compose up -d --build; .\test-integrated.ps1
+```
+
+Este comando irá:
+1. Compilar todos os microserviços.
+2. Subir os containers (Banco, Rabbit, Registry e Serviços).
+3. Executar o fluxo completo de teste (Agendamento -> Contrato -> Pagamento -> Avaliação).
+
+O script de teste integrado valida o fluxo ponta-a-ponta:
+`Agendamento -> Contrato -> Pagamento -> Notificação -> Avaliação`
+
+### 2. Ambientes Isolados
+Cada microserviço possui seu próprio `docker-compose.yml` em sua pasta. Para rodar um serviço específico com suas dependências mínimas, navegue até a pasta do serviço e execute:
 ```bash
 docker-compose up -d --build
 ```
 
-Acompanhe o status do registro de serviços em: [http://localhost:8761](http://localhost:8761)
-
-## 🧪 Testes Integrados
-Após subir os containers, você pode validar o fluxo completo de negócio (Agendamento -> Contrato -> Pagamento -> Avaliação) rodando:
-```powershell
-.\test-integrated.ps1
-```
+Acompanhe o status do registro de serviços (Eureka) em: [http://localhost:8761](http://localhost:8761)
 
 ## 🔗 Repositórios Relacionados
 Cada serviço possui seu próprio ciclo de vida e repositório:
@@ -45,4 +52,4 @@ Cada serviço possui seu próprio ciclo de vida e repositório:
 - [service-registry](https://github.com/emersondll/clean-pro-solutions-service-registry)
 
 ---
-© 2026 Clean Pro Solutions - Desenvolvido por Emerson.
+© 2026 Clean Pro Solutions - Desenvolvido por Emerson Lima.
