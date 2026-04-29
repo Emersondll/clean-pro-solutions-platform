@@ -1,0 +1,216 @@
+services:
+
+  # --- Infrastructure ---
+
+  mongo:
+    image: mongo:7.0
+    container_name: clean-pro-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - clean-pro-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: clean-pro-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - clean-pro-net
+
+  service-registry:
+    build:
+      context: ./clean-pro-solutions-service-registry
+      dockerfile: Dockerfile
+    container_name: clean-pro-service-registry
+    ports:
+      - "8761:8761"
+    networks:
+      - clean-pro-net
+
+  # --- Microservices ---
+
+  auth-service:
+    build:
+      context: ./clean-pro-solutions-auth-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/auth_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  user-service:
+    build:
+      context: ./clean-pro-solutions-user-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-user-service
+    ports:
+      - "8082:8082"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/user_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  catalog-service:
+    build:
+      context: ./clean-pro-solutions-catalog
+      dockerfile: Dockerfile
+    container_name: clean-pro-catalog-service
+    ports:
+      - "8083:8083"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/catalog_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  scheduling-service:
+    build:
+      context: ./clean-pro-solutions-scheduling-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-scheduling-service
+    ports:
+      - "8084:8084"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/scheduling_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  availability-service:
+    build:
+      context: ./clean-pro-solutions-availability-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-availability-service
+    ports:
+      - "8085:8085"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/availability_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  contract-service:
+    build:
+      context: ./clean-pro-solutions-contract-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-contract-service
+    ports:
+      - "8086:8086"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/contract_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  payment-service:
+    build:
+      context: ./clean-pro-solutions-payment-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-payment-service
+    ports:
+      - "8087:8087"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/payment_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  rating-service:
+    build:
+      context: ./clean-pro-solutions-rating-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-rating-service
+    ports:
+      - "8088:8088"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/rating_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  notification-service:
+    build:
+      context: ./clean-pro-solutions-notification-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-notification-service
+    ports:
+      - "8089:8089"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/notification_db
+      RABBITMQ_HOST: rabbitmq
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - mongo
+      - rabbitmq
+      - service-registry
+    networks:
+      - clean-pro-net
+
+  bff-service:
+    build:
+      context: ./clean-pro-solutions-bff
+      dockerfile: Dockerfile
+    container_name: clean-pro-bff-service
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      - service-registry
+    networks:
+      - clean-pro-net
+
+volumes:
+  mongo-data:
+
+networks:
+  clean-pro-net:
+    driver: bridge

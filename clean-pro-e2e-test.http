@@ -1,0 +1,102 @@
+### Clean Pro Solutions — End-To-End Integration Test
+### Pré-requisitos: 
+### 1. Extensão "REST Client" no VS Code ou suporte nativo no IntelliJ IDEA.
+### 2. Ter executado `docker-compose up --build` na pasta raiz.
+### 3. Aguardar todos os serviços aparecerem no Eureka (http://localhost:8761)
+
+@eurekaUrl = http://localhost:8761
+@schedulingUrl = http://localhost:8084
+@contractUrl = http://localhost:8086
+@paymentUrl = http://localhost:8087
+@ratingUrl = http://localhost:8088
+
+### ------------------------------------------------------------------------
+### ETAPA 1: VERIFICAR HEALTH & EUREKA
+### ------------------------------------------------------------------------
+
+### 1.1 - Verifica se o Eureka Server está respondendo
+GET {{eurekaUrl}}/eureka/apps
+Accept: application/json
+
+### ------------------------------------------------------------------------
+### ETAPA 2: AGENDAMENTO (Scheduling Service -> Availability & Notification)
+### ------------------------------------------------------------------------
+
+### 2.1 - Criar um novo Agendamento
+# Isso deve salvar com status PENDING e emitir evento ScheduleCreatedEvent
+# O Availability Service e Notification Service vão consumir esse evento.
+# @name createSchedule
+POST {{schedulingUrl}}/schedulings
+Content-Type: application/json
+
+{
+  "clientId": "client-101",
+  "contractorId": "contractor-909",
+  "serviceId": "cleaning-service-1",
+  "startTime": "2026-05-10T10:00:00Z",
+  "endTime": "2026-05-10T14:00:00Z"
+}
+
+### ------------------------------------------------------------------------
+### ETAPA 3: CONTRATO (Contract Service -> SAGA Init)
+### ------------------------------------------------------------------------
+
+### 3.1 - Criar um Contrato após a confirmação do Agendamento
+# Deve ser salvo como PENDING_PAYMENT e emitir ContractCreatedEvent
+# @name createContract
+POST {{contractUrl}}/contracts
+Content-Type: application/json
+
+{
+  "clientId": "client-101",
+  "contractorId": "contractor-909",
+  "serviceId": "cleaning-service-1",
+  "schedulingId": "{{createSchedule.response.body.id}}",
+  "agreedPrice": 250.00
+}
+
+### ------------------------------------------------------------------------
+### ETAPA 4: PAGAMENTO (Payment Service -> Webhook & SAGA Complete)
+### ------------------------------------------------------------------------
+
+### 4.1 - Verificar a intenção de pagamento gerada pelo evento do contrato
+# O Payment Service deve ter ouvido a criação do contrato e gerado um registro PENDING.
+GET {{paymentUrl}}/payments/contract/{{createContract.response.body.id}}
+
+### 4.2 - Simular Webhook do Gateway de Pagamento (ex: Stripe aprovou)
+# Isso deve alterar o pagamento para APPROVED e emitir PaymentApprovedEvent
+POST {{paymentUrl}}/payments/webhook
+Content-Type: application/json
+
+{
+  "externalTransactionId": "txn_stripe_555888",
+  "contractId": "{{createContract.response.body.id}}",
+  "success": true
+}
+
+### ------------------------------------------------------------------------
+### ETAPA 5: VALIDAÇÃO DA SAGA (Contract Service)
+### ------------------------------------------------------------------------
+
+### 5.1 - Verificar se o Contrato mudou de PENDING_PAYMENT para CONFIRMED
+# O Contract Service consumiu o evento de pagamento aprovado e efetuou a alteração.
+GET {{contractUrl}}/contracts/{{createContract.response.body.id}}
+
+### ------------------------------------------------------------------------
+### ETAPA 6: AVALIAÇÃO (Rating Service)
+### ------------------------------------------------------------------------
+
+### 6.1 - Criar uma avaliação do cliente para o prestador
+POST {{ratingUrl}}/ratings
+Content-Type: application/json
+
+{
+  "reviewerId": "client-101",
+  "reviewedId": "contractor-909",
+  "contractId": "{{createContract.response.body.id}}",
+  "score": 5,
+  "comment": "Excelente profissional! Chegou no horário e limpou tudo perfeitamente."
+}
+
+### 6.2 - Verificar a média do prestador após receber a nota
+GET {{ratingUrl}}/ratings/reviewed/contractor-909/average

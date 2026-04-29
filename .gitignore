@@ -1,0 +1,32 @@
+# Microserviços (Gerenciados em repositórios próprios)
+clean-pro-solutions-auth-service/
+clean-pro-solutions-availability-service/
+clean-pro-solutions-bff/
+clean-pro-solutions-catalog/
+clean-pro-solutions-contract-service/
+clean-pro-solutions-notification-service/
+clean-pro-solutions-payment-service/
+clean-pro-solutions-rating-service/
+clean-pro-solutions-scheduling-service/
+clean-pro-solutions-service-registry/
+clean-pro-solutions-user-service/
+clean-pro-solutions-app/
+
+# Java / Maven
+**/target/
+**/bin/
+.mvn/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.sublime-*
+
+# Arquivos temporários de processo (Faxina)
+sanitize.ps1
+update-readmes.ps1
+push-to-github.ps1
+CLAUDE.md
+implementation_plan.md
+task.md
