@@ -1,212 +1,451 @@
 services:
 
-  # --- Infrastructure ---
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────────────────────────
 
   mongo:
     image: mongo:7.0
     container_name: clean-pro-mongo
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: clean-pro-rabbitmq
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   service-registry:
     build:
       context: ./clean-pro-solutions-service-registry
       dockerfile: Dockerfile
     container_name: clean-pro-service-registry
+    restart: unless-stopped
     ports:
       - "8761:8761"
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
-  # --- Microservices ---
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Microservices
+  # ─────────────────────────────────────────────────────────────────────────────
 
   auth-service:
     build:
       context: ./clean-pro-solutions-auth-service
       dockerfile: Dockerfile
     container_name: clean-pro-auth-service
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
+      SERVER_PORT: 8081
       MONGO_URI: mongodb://mongo:27017/auth_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
+      JWT_SECRET: cleanProSolutionsSuperSecretKeyForJWT2026MustBe256BitsOrMore
+      JWT_EXPIRATION: 900000
+      JWT_REFRESH_EXPIRATION: 604800000
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8081/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   user-service:
     build:
       context: ./clean-pro-solutions-user-service
       dockerfile: Dockerfile
     container_name: clean-pro-user-service
+    restart: unless-stopped
     ports:
       - "8082:8082"
     environment:
+      SERVER_PORT: 8082
       MONGO_URI: mongodb://mongo:27017/user_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8082/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   catalog-service:
     build:
       context: ./clean-pro-solutions-catalog
       dockerfile: Dockerfile
     container_name: clean-pro-catalog-service
+    restart: unless-stopped
     ports:
       - "8083:8083"
     environment:
+      SERVER_PORT: 8083
       MONGO_URI: mongodb://mongo:27017/catalog_db
-      RABBITMQ_HOST: rabbitmq
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - service-registry
+      mongo:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8083/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   scheduling-service:
     build:
       context: ./clean-pro-solutions-scheduling-service
       dockerfile: Dockerfile
     container_name: clean-pro-scheduling-service
+    restart: unless-stopped
     ports:
       - "8084:8084"
     environment:
+      SERVER_PORT: 8084
       MONGO_URI: mongodb://mongo:27017/scheduling_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8084/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   availability-service:
     build:
       context: ./clean-pro-solutions-availability-service
       dockerfile: Dockerfile
     container_name: clean-pro-availability-service
+    restart: unless-stopped
     ports:
       - "8085:8085"
     environment:
+      SERVER_PORT: 8085
       MONGO_URI: mongodb://mongo:27017/availability_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8085/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   contract-service:
     build:
       context: ./clean-pro-solutions-contract-service
       dockerfile: Dockerfile
     container_name: clean-pro-contract-service
+    restart: unless-stopped
     ports:
       - "8086:8086"
     environment:
+      SERVER_PORT: 8086
       MONGO_URI: mongodb://mongo:27017/contract_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8086/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   payment-service:
     build:
       context: ./clean-pro-solutions-payment-service
       dockerfile: Dockerfile
     container_name: clean-pro-payment-service
+    restart: unless-stopped
     ports:
       - "8087:8087"
     environment:
+      SERVER_PORT: 8087
       MONGO_URI: mongodb://mongo:27017/payment_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8087/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   rating-service:
     build:
       context: ./clean-pro-solutions-rating-service
       dockerfile: Dockerfile
     container_name: clean-pro-rating-service
+    restart: unless-stopped
     ports:
       - "8088:8088"
     environment:
+      SERVER_PORT: 8088
       MONGO_URI: mongodb://mongo:27017/rating_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8088/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   notification-service:
     build:
       context: ./clean-pro-solutions-notification-service
       dockerfile: Dockerfile
     container_name: clean-pro-notification-service
+    restart: unless-stopped
     ports:
       - "8089:8089"
     environment:
+      SERVER_PORT: 8089
       MONGO_URI: mongodb://mongo:27017/notification_db
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - mongo
-      - rabbitmq
-      - service-registry
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8089/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  chat-service:
+    build:
+      context: ./clean-pro-solutions-chat-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-chat-service
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      SERVER_PORT: 8091
+      MONGO_URI: mongodb://mongo:27017/chat_db
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8091/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  support-service:
+    build:
+      context: ./clean-pro-solutions-support-service
+      dockerfile: Dockerfile
+    container_name: clean-pro-support-service
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      SERVER_PORT: 8092
+      MONGO_URI: mongodb://mongo:27017/support_db
+      EUREKA_SERVER_URL: http://service-registry:8761/eureka
+    depends_on:
+      mongo:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    networks:
+      - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8092/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
   bff-service:
     build:
       context: ./clean-pro-solutions-bff
       dockerfile: Dockerfile
     container_name: clean-pro-bff-service
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
+      SERVER_PORT: 8080
       EUREKA_SERVER_URL: http://service-registry:8761/eureka
     depends_on:
-      - service-registry
+      service-registry:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+      catalog-service:
+        condition: service_started
+      scheduling-service:
+        condition: service_started
+      contract-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      rating-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+      support-service:
+        condition: service_started
     networks:
       - clean-pro-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
 volumes:
   mongo-data:

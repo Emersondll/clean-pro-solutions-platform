@@ -1,102 +1,384 @@
 ### Clean Pro Solutions — End-To-End Integration Test
-### Pré-requisitos: 
-### 1. Extensão "REST Client" no VS Code ou suporte nativo no IntelliJ IDEA.
-### 2. Ter executado `docker-compose up --build` na pasta raiz.
-### 3. Aguardar todos os serviços aparecerem no Eureka (http://localhost:8761)
+### Prerequisites:
+### 1. VS Code "REST Client" extension or IntelliJ HTTP Client.
+### 2. Run `docker-compose up --build` in the project root.
+### 3. Wait for all services to appear in Eureka: http://localhost:8761
 
-@eurekaUrl = http://localhost:8761
-@schedulingUrl = http://localhost:8084
-@contractUrl = http://localhost:8086
-@paymentUrl = http://localhost:8087
-@ratingUrl = http://localhost:8088
+@eurekaUrl        = http://localhost:8761
+@authUrl          = http://localhost:8081
+@userUrl          = http://localhost:8082
+@catalogUrl       = http://localhost:8083
+@schedulingUrl    = http://localhost:8084
+@availabilityUrl  = http://localhost:8085
+@contractUrl      = http://localhost:8086
+@paymentUrl       = http://localhost:8087
+@ratingUrl        = http://localhost:8088
+@notificationUrl  = http://localhost:8089
+@chatUrl          = http://localhost:8091
+@supportUrl       = http://localhost:8092
+@bffUrl           = http://localhost:8080
 
-### ------------------------------------------------------------------------
-### ETAPA 1: VERIFICAR HEALTH & EUREKA
-### ------------------------------------------------------------------------
+### =========================================================================
+### ETAPA 0: HEALTH CHECKS
+### =========================================================================
 
-### 1.1 - Verifica se o Eureka Server está respondendo
+### 0.1 - Eureka Registry
 GET {{eurekaUrl}}/eureka/apps
 Accept: application/json
 
-### ------------------------------------------------------------------------
-### ETAPA 2: AGENDAMENTO (Scheduling Service -> Availability & Notification)
-### ------------------------------------------------------------------------
+### 0.2 - BFF Health
+GET {{bffUrl}}/actuator/health
 
-### 2.1 - Criar um novo Agendamento
-# Isso deve salvar com status PENDING e emitir evento ScheduleCreatedEvent
-# O Availability Service e Notification Service vão consumir esse evento.
+### 0.3 - Auth Service Health
+GET {{authUrl}}/actuator/health
+
+### =========================================================================
+### ETAPA 1: AUTENTICAÇÃO (Auth Service)
+### =========================================================================
+
+### 1.1 - Register CLIENT user
+### FIX #1: register now returns { "userId": "...", "email": "..." } (was void/201)
+# @name registerClient
+POST {{authUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "client.e2e@cleanpro.com",
+  "password": "Test@1234",
+  "role": "CLIENT"
+}
+
+### 1.2 - Register CONTRACTOR user
+# @name registerContractor
+POST {{authUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "contractor.e2e@cleanpro.com",
+  "password": "Test@1234",
+  "role": "CONTRACTOR"
+}
+
+### 1.3 - Login as CLIENT (capture JWT)
+# @name loginClient
+POST {{authUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "client.e2e@cleanpro.com",
+  "password": "Test@1234"
+}
+
+### 1.4 - Login as CONTRACTOR
+# @name loginContractor
+POST {{authUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "contractor.e2e@cleanpro.com",
+  "password": "Test@1234"
+}
+
+### 1.5 - Validate token (response contains userId in subject)
+GET {{authUrl}}/auth/validate
+Authorization: Bearer {{loginClient.response.body.accessToken}}
+
+### =========================================================================
+### ETAPA 2: USUÁRIOS (User Service)
+### =========================================================================
+
+### 2.1 - Create CLIENT user profile
+### FIX #2: field is "type" not "role" in UserRequest DTO
+# @name createClientProfile
+POST {{userUrl}}/users
+Content-Type: application/json
+
+{
+  "authId": "{{registerClient.response.body.userId}}",
+  "name": "Carlos Cliente E2E",
+  "email": "client.e2e@cleanpro.com",
+  "phone": "+5511999990001",
+  "type": "CLIENT"
+}
+
+### 2.2 - Create CONTRACTOR user profile
+# @name createContractorProfile
+POST {{userUrl}}/users
+Content-Type: application/json
+
+{
+  "authId": "{{registerContractor.response.body.userId}}",
+  "name": "Pedro Prestador E2E",
+  "email": "contractor.e2e@cleanpro.com",
+  "phone": "+5511999990002",
+  "type": "CONTRACTOR",
+  "address": {
+    "street": "Rua das Flores",
+    "number": "100",
+    "city": "São Paulo",
+    "state": "SP",
+    "zipCode": "01310-100",
+    "latitude": -23.561,
+    "longitude": -46.656
+  }
+}
+
+### 2.3 - Get client profile by ID
+GET {{userUrl}}/users/{{createClientProfile.response.body.id}}
+
+### 2.4 - Update contractor professional profile
+PUT {{userUrl}}/users/{{createContractorProfile.response.body.id}}/contractor-profile
+Content-Type: application/json
+
+{
+  "bio": "Especialista em limpeza residencial com 10 anos de experiência",
+  "specialties": ["Limpeza Residencial", "Limpeza Comercial"],
+  "hourlyRate": 80.00,
+  "yearsOfExperience": 10
+}
+
+### 2.5 - Find nearby contractors (geospatial)
+### FIX #3: params are "lat", "lng", "type" — NOT "latitude", "longitude", "role"
+GET {{userUrl}}/users/nearby?lat=-23.561&lng=-46.656&radiusKm=10&type=CONTRACTOR
+
+### =========================================================================
+### ETAPA 3: CATÁLOGO (Catalog Service)
+### =========================================================================
+
+### 3.1 - Create a service offering
+### FIX #5: field is "durationInHours" (int 1-24), NOT "estimatedDurationMinutes"
+### "active" is not a field of ServiceRequest; remove it
+# @name createService
+POST {{catalogUrl}}/services
+Content-Type: application/json
+
+{
+  "name": "Limpeza Residencial Completa",
+  "description": "Limpeza completa de imóvel residencial incluindo todos os cômodos",
+  "type": "CLEANING",
+  "basePrice": 200.00,
+  "durationInHours": 4
+}
+
+### 3.2 - List all active services
+### FIX #4: /services/active does not exist — correct route is /services?activeOnly=true
+GET {{catalogUrl}}/services?activeOnly=true
+
+### 3.3 - Search services by keyword
+GET {{catalogUrl}}/services/search?query=limpeza
+
+### 3.4 - Get service by ID
+GET {{catalogUrl}}/services/{{createService.response.body.id}}
+
+### =========================================================================
+### ETAPA 4: DISPONIBILIDADE (Availability Service)
+### =========================================================================
+
+### 4.1 - Check contractor availability for a time slot
+### FIX #6: endpoint returns raw Boolean (true/false), not { "available": bool }
+### Note: query params are contractorId, startTime, endTime
+GET {{availabilityUrl}}/availability/check?contractorId={{createContractorProfile.response.body.id}}&startTime=2026-06-01T10:00:00Z&endTime=2026-06-01T14:00:00Z
+
+### 4.2 - Get all slots for contractor
+GET {{availabilityUrl}}/availability/contractor/{{createContractorProfile.response.body.id}}
+
+### =========================================================================
+### ETAPA 5: AGENDAMENTO (Scheduling Service)
+### =========================================================================
+
+### 5.1 - Create a scheduling (recurrencePattern optional; NONE or omit)
 # @name createSchedule
 POST {{schedulingUrl}}/schedulings
 Content-Type: application/json
 
 {
-  "clientId": "client-101",
-  "contractorId": "contractor-909",
-  "serviceId": "cleaning-service-1",
-  "startTime": "2026-05-10T10:00:00Z",
-  "endTime": "2026-05-10T14:00:00Z"
+  "clientId": "{{createClientProfile.response.body.id}}",
+  "contractorId": "{{createContractorProfile.response.body.id}}",
+  "serviceId": "{{createService.response.body.id}}",
+  "startTime": "2026-06-01T10:00:00Z",
+  "endTime": "2026-06-01T14:00:00Z",
+  "recurrencePattern": "NONE"
 }
 
-### ------------------------------------------------------------------------
-### ETAPA 3: CONTRATO (Contract Service -> SAGA Init)
-### ------------------------------------------------------------------------
+### 5.2 - Get scheduling by ID
+GET {{schedulingUrl}}/schedulings/{{createSchedule.response.body.id}}
 
-### 3.1 - Criar um Contrato após a confirmação do Agendamento
-# Deve ser salvo como PENDING_PAYMENT e emitir ContractCreatedEvent
+### 5.3 - Get all schedulings for the client
+GET {{schedulingUrl}}/schedulings/client/{{createClientProfile.response.body.id}}
+
+### 5.4 - Create a recurring scheduling (WEEKLY)
+### FIX #7: "occurrences" is a @RequestParam in the URL, NOT a field in the request body
+POST {{schedulingUrl}}/schedulings/recurring?occurrences=4
+Content-Type: application/json
+
+{
+  "clientId": "{{createClientProfile.response.body.id}}",
+  "contractorId": "{{createContractorProfile.response.body.id}}",
+  "serviceId": "{{createService.response.body.id}}",
+  "startTime": "2026-06-08T10:00:00Z",
+  "endTime": "2026-06-08T14:00:00Z",
+  "recurrencePattern": "WEEKLY"
+}
+
+### =========================================================================
+### ETAPA 6: CONTRATO (Contract Service → SAGA Init)
+### =========================================================================
+
+### 6.1 - Create a contract (triggers ContractCreatedEvent → payment-service)
 # @name createContract
 POST {{contractUrl}}/contracts
 Content-Type: application/json
 
 {
-  "clientId": "client-101",
-  "contractorId": "contractor-909",
-  "serviceId": "cleaning-service-1",
+  "clientId": "{{createClientProfile.response.body.id}}",
+  "contractorId": "{{createContractorProfile.response.body.id}}",
+  "serviceId": "{{createService.response.body.id}}",
   "schedulingId": "{{createSchedule.response.body.id}}",
   "agreedPrice": 250.00
 }
 
-### ------------------------------------------------------------------------
-### ETAPA 4: PAGAMENTO (Payment Service -> Webhook & SAGA Complete)
-### ------------------------------------------------------------------------
+### 6.2 - Get contract by ID (should be PENDING_PAYMENT)
+GET {{contractUrl}}/contracts/{{createContract.response.body.id}}
 
-### 4.1 - Verificar a intenção de pagamento gerada pelo evento do contrato
-# O Payment Service deve ter ouvido a criação do contrato e gerado um registro PENDING.
+### 6.3 - List contracts for client
+GET {{contractUrl}}/contracts/client/{{createClientProfile.response.body.id}}
+
+### =========================================================================
+### ETAPA 7: PAGAMENTO (Payment Service → SAGA Complete)
+### =========================================================================
+
+### 7.1 - Check payment created by SAGA (wait ~2s after contract creation)
 GET {{paymentUrl}}/payments/contract/{{createContract.response.body.id}}
 
-### 4.2 - Simular Webhook do Gateway de Pagamento (ex: Stripe aprovou)
-# Isso deve alterar o pagamento para APPROVED e emitir PaymentApprovedEvent
+### 7.2 - Simulate payment gateway webhook (approval)
 POST {{paymentUrl}}/payments/webhook
 Content-Type: application/json
 
 {
-  "externalTransactionId": "txn_stripe_555888",
+  "externalTransactionId": "txn_stripe_e2e_001",
   "contractId": "{{createContract.response.body.id}}",
   "success": true
 }
 
-### ------------------------------------------------------------------------
-### ETAPA 5: VALIDAÇÃO DA SAGA (Contract Service)
-### ------------------------------------------------------------------------
-
-### 5.1 - Verificar se o Contrato mudou de PENDING_PAYMENT para CONFIRMED
-# O Contract Service consumiu o evento de pagamento aprovado e efetuou a alteração.
+### 7.3 - Verify contract changed to CONFIRMED (wait ~3s for SAGA propagation)
 GET {{contractUrl}}/contracts/{{createContract.response.body.id}}
 
-### ------------------------------------------------------------------------
-### ETAPA 6: AVALIAÇÃO (Rating Service)
-### ------------------------------------------------------------------------
+### =========================================================================
+### ETAPA 8: NOTIFICAÇÕES (Notification Service)
+### =========================================================================
 
-### 6.1 - Criar uma avaliação do cliente para o prestador
+### 8.1 - Get notifications for client (created by SAGA events)
+GET {{notificationUrl}}/notifications/recipient/{{createClientProfile.response.body.id}}
+
+### 8.2 - Get notifications for contractor
+GET {{notificationUrl}}/notifications/recipient/{{createContractorProfile.response.body.id}}
+
+### =========================================================================
+### ETAPA 9: CHAT (Chat Service — Real-time Messaging)
+### =========================================================================
+
+### 9.1 - Get or create chat room for the contract
+# @name createRoom
+POST {{chatUrl}}/chat/rooms?clientId={{createClientProfile.response.body.id}}&contractorId={{createContractorProfile.response.body.id}}&contractId={{createContract.response.body.id}}
+
+### 9.2 - Send a message from client
+POST {{chatUrl}}/chat/{{createRoom.response.body}}/messages
+Content-Type: application/json
+
+{
+  "senderId": "{{createClientProfile.response.body.id}}",
+  "content": "Olá! Confirma o serviço para amanhã às 10h?"
+}
+
+### 9.3 - Send a reply from contractor
+POST {{chatUrl}}/chat/{{createRoom.response.body}}/messages
+Content-Type: application/json
+
+{
+  "senderId": "{{createContractorProfile.response.body.id}}",
+  "content": "Olá! Confirmado, estarei aí pontualmente."
+}
+
+### 9.4 - Get message history
+GET {{chatUrl}}/chat/{{createRoom.response.body}}/messages
+
+### =========================================================================
+### ETAPA 10: AVALIAÇÃO (Rating Service)
+### =========================================================================
+
+### 10.1 - Client rates the contractor
 POST {{ratingUrl}}/ratings
 Content-Type: application/json
 
 {
-  "reviewerId": "client-101",
-  "reviewedId": "contractor-909",
+  "reviewerId": "{{createClientProfile.response.body.id}}",
+  "reviewedId": "{{createContractorProfile.response.body.id}}",
   "contractId": "{{createContract.response.body.id}}",
   "score": 5,
-  "comment": "Excelente profissional! Chegou no horário e limpou tudo perfeitamente."
+  "comment": "Excelente profissional! Serviço impecável e dentro do prazo."
 }
 
-### 6.2 - Verificar a média do prestador após receber a nota
-GET {{ratingUrl}}/ratings/reviewed/contractor-909/average
+### 10.2 - Get ratings for contractor
+GET {{ratingUrl}}/ratings/reviewed/{{createContractorProfile.response.body.id}}
+
+### 10.3 - Get average score for contractor
+### FIX #8: returns raw Double (e.g. 5.0), NOT an object like { "averageScore": 5.0 }
+GET {{ratingUrl}}/ratings/reviewed/{{createContractorProfile.response.body.id}}/average
+
+### =========================================================================
+### ETAPA 11: SUPORTE (Support Service)
+### =========================================================================
+
+### 11.1 - Open a support ticket
+### FIX #9: TicketRequest requires "priority" (@NotNull) and "subject" (@NotBlank)
+# @name openTicket
+POST {{supportUrl}}/tickets
+Content-Type: application/json
+
+{
+  "requesterId": "{{createClientProfile.response.body.id}}",
+  "contractId": "{{createContract.response.body.id}}",
+  "type": "DISPUTE",
+  "priority": "HIGH",
+  "subject": "Atraso do prestador sem aviso prévio",
+  "description": "O prestador chegou com 1 hora de atraso sem comunicação prévia."
+}
+
+### 11.2 - Get ticket by ID
+GET {{supportUrl}}/tickets/{{openTicket.response.body.id}}
+
+### 11.3 - List tickets for client
+GET {{supportUrl}}/tickets/requester/{{createClientProfile.response.body.id}}
+
+### 11.4 - Assign ticket to support agent
+PATCH {{supportUrl}}/tickets/{{openTicket.response.body.id}}/assign
+
+### 11.5 - Resolve ticket
+PATCH {{supportUrl}}/tickets/{{openTicket.response.body.id}}/resolve
+Content-Type: application/json
+
+{
+  "resolution": "Contatamos o prestador e foi confirmado o atraso. Aplicamos desconto de 15% ao cliente."
+}
+
+### 11.6 - Close ticket
+PATCH {{supportUrl}}/tickets/{{openTicket.response.body.id}}/close
+
+### =========================================================================
+### ETAPA 12: BFF (API Gateway verification)
+### =========================================================================
+
+### 12.1 - BFF health (confirms all downstream services reachable via Eureka)
+GET {{bffUrl}}/actuator/health
+
+### 12.2 - Access auth service via BFF
+POST {{bffUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "client.e2e@cleanpro.com",
+  "password": "Test@1234"
+}
+
+### 12.3 - Access scheduling service via BFF
+GET {{bffUrl}}/schedulings/client/{{createClientProfile.response.body.id}}
