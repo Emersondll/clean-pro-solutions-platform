@@ -23,7 +23,10 @@ clean-pro-solutions-app/
 *.swp
 *.sublime-*
 
-# Arquivos temporários de processo (Faxina)
+# Claude Code (agente de IA — configurações locais)
+.claude/
+
+# Arquivos temporários de processo
 sanitize.ps1
 update-readmes.ps1
 push-to-github.ps1
